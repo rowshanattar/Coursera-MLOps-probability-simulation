@@ -77,17 +77,16 @@ def calculate_value_multiple(
     count_people_making_money = 0
     for person in range(1, people + 1):
         # calculate value of startup for each person
-        if (
-            calculate_value(startup_valuation, percent_owned, simulations, probability)
-            > 0
-        ):
-            count_people_making_money += 1
-        total += calculate_value(
+        # simulate one career and use it for both the count and the total
+        value = calculate_value(
             startup_valuation=startup_valuation,
             percent_owned=percent_owned,
             simulations=simulations,
             probability=probability,
         )
+        if value > 0:
+            count_people_making_money += 1
+        total += value
         print(f"Total value of startup for all people: {total} Person #{person}")
     # print average value of startup for all people
     print(f"Average value of startup for all people: {total/people}")
@@ -116,7 +115,7 @@ def simulate_investor(
     print(
         f"low range investments: {low_range_investments} high range investments: {high_range_investments}"
     )
-    for simulation in range(1, simulations + 1):
+    for _ in range(1, simulations + 1):
         # generate scenarios with probability 0.5
         scenarios = generate_true_false(probability, simulations)
         # if True, add value of startup to total
@@ -135,7 +134,9 @@ def simulate_investor(
             continue
     return_on_investment = total - accumulated_investments
     try:
-        percentage_return_on_investment = return_on_investment / total * 100
+        percentage_return_on_investment = (
+            return_on_investment / accumulated_investments * 100
+        )
     except ZeroDivisionError:
         percentage_return_on_investment = 0
     payoff_dictionary = {
@@ -151,9 +152,20 @@ def sanity_test(num):
     """Show the ratio of True/False is close to the probability via law or large numbers"""
 
     # generate 10 scenarios with probability 0.5
-    generate_true_false([0.5, 0.5], num)
+    generate_true_false(0.5, num)
     # generate 10 scenarios with probability 0.023 (1 in 43 startups succeed)
-    generate_true_false([0.023, 0.977], num)
+    generate_true_false(0.023, num)
+
+
+def parse_range(_ctx, _param, value):
+    """Parse a "low, high" option string into a tuple of two ints"""
+    try:
+        low, high = (int(part) for part in value.split(","))
+    except ValueError as exc:
+        raise click.BadParameter("must be two integers, e.g. '10000, 10000000'") from exc
+    if low > high:
+        raise click.BadParameter(f"low value {low} is greater than high value {high}")
+    return low, high
 
 
 @click.group()
@@ -163,7 +175,7 @@ def cli():
 
 # add a command to the cli
 @cli.command("sanity")
-@click.option("--num", default=100, help="Number of scenarios to generate")
+@click.option("--num", default=100, type=click.IntRange(min=1), help="Number of scenarios to generate")
 def sanity(num):
     """Sanity test the simulation with a small number of scenarios
 
@@ -176,14 +188,20 @@ def sanity(num):
 
 @cli.command("vcportfolio")
 @click.option(
-    "--startup_valuation", default="10000000, 10000000000", help="Value of startup range"
+    "--startup_valuation",
+    default="10000000, 10000000000",
+    callback=parse_range,
+    help="Value of startup range",
 )
 @click.option(
     "--simulations", default=100, help="Number of startups worked for in a row"
 )
-@click.option("--probability", default=0.023, help="Probability of startup success")
+@click.option("--probability", default=0.023, type=click.FloatRange(0, 1), help="Probability of startup success")
 @click.option(
-    "--investments", default="10000, 10000000", help="Amount invested range"
+    "--investments",
+    default="10000, 10000000",
+    callback=parse_range,
+    help="Amount invested range",
 )
 def vcportfolio(startup_valuation, simulations, probability, investments):
     """Simulate a venture capitalist investing in a porfolio of companies
@@ -191,8 +209,7 @@ def vcportfolio(startup_valuation, simulations, probability, investments):
     Example:
         python startup_game.py vcportfolio --startup_valuation (1000000, 100000000) --simulations 100 --probability 0.23
     """
-    startup_valuation = tuple(map(int, startup_valuation.split(",")))
-    investment_range = tuple(map(int, investments.split(",")))
+    investment_range = investments
     print(f"Startup Valuation: {startup_valuation}")
     print(f"Investments: {investments}")
     click.echo(click.style(f"Startup Valuation: {startup_valuation}", fg="green"))
@@ -216,13 +233,13 @@ def vcportfolio(startup_valuation, simulations, probability, investments):
         click.echo(click.style(f"Amount Invested: ${roi/1000000:.2f}M", fg="green"))
         click.echo(click.style(f"Amount Returned: ${roi/1000000:.2f}M", fg="green"))
         click.echo(click.style(f"Return on Investment: ${roi/1000000:.2f}M", fg="green"))
-        click.echo(click.style(f"Percentage Return on Investment: 0%", fg="green"))
+        click.echo(click.style("Percentage Return on Investment: 0%", fg="green"))
 
 @cli.command("simulate")
 @click.option("--startup_valuation", default=100000000, help="Value of startup")
 @click.option("--percent_owned", default=0.01, help="Percent of company owned")
 @click.option("--simulations", default=4, help="Number of startups worked for in a row")
-@click.option("--probability", default=0.023, help="Probability of success")
+@click.option("--probability", default=0.023, type=click.FloatRange(0, 1), help="Probability of success")
 def simulate(startup_valuation, percent_owned, simulations, probability):
     """Simulate a startup career
 
@@ -240,8 +257,8 @@ def simulate(startup_valuation, percent_owned, simulations, probability):
 @click.option("--startup_valuation", default=100000000, help="Value of startup")
 @click.option("--percent_owned", default=0.01, help="Percent of company owned")
 @click.option("--simulations", default=4, help="Number of startups worked for in a row")
-@click.option("--probability", default=0.023, help="Probability of success")
-@click.option("--people", default=1000, help="Number of people to simulate")
+@click.option("--probability", default=0.023, type=click.FloatRange(0, 1), help="Probability of success")
+@click.option("--people", default=1000, type=click.IntRange(min=1), help="Number of people to simulate")
 def simulate_multiple(
     startup_valuation, percent_owned, simulations, probability, people
 ):

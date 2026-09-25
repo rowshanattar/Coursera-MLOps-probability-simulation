@@ -16,7 +16,14 @@ container-lint:
 
 refactor: format lint
 
-deploy:
-	#deploy goes here
+IMAGE ?= ghcr.io/rowshanattar/startup-game
+TAG   ?= $(shell git rev-parse --short HEAD)
+
+build:
+      docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
+
+deploy: build
+      docker push $(IMAGE):$(TAG)
+      docker push $(IMAGE):latest
 		
 all: install lint test format deploy
